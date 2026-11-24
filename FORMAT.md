@@ -20,6 +20,7 @@ ingredients:
   milk:   500 ml whole milk
   eggs:   2 eggs                 # unitless counts round to whole numbers
   salt:   1 pinch salt !fixed    # !fixed = never scales
+  puree:  400 g squash purée !made # !made = made in an earlier step, left off shopping lists
   butter: 2 tbsp butter, for frying
 
 equipment:

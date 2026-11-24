@@ -1,6 +1,7 @@
 import { parseRecipe, parseIndex } from './parse.js';
 import { auth, loadNotes, addNote, deleteNote, checkToken, TOKEN_URL } from './notes.js';
 import { formatAmount, nameFor, convertText, parseIngredientLine, NUM } from './units.js';
+import { getMenu, saveMenu, addToMenu, removeFromMenu, expandMenu, buildShoppingList, formatItem, itemLabel, SECTION_ORDER } from './menu.js';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 let app = $('#app');
@@ -40,7 +41,7 @@ async function renderList() {
   let q = '', tag = '';
 
   app.innerHTML = `
-    <header class="top"><h1>Recipe Book</h1></header>
+    <header class="top"><h1>Recipe Book</h1>${menuLink()}</header>
     <input id="search" type="search" placeholder="Search recipes or ingredients" autocomplete="off">
     <div class="chips" id="tags">${tags.map(t => `<button class="chip" data-tag="${esc(t)}">${esc(t)}</button>`).join('')}</div>
     <ul class="cards" id="cards"></ul>`;
@@ -131,8 +132,9 @@ async function renderRecipe(slug) {
     const scale = servings / r.yield;
     const byId = Object.fromEntries(r.ingredients.map(i => [i.id, i]));
     const bigChange = scale >= 1.75 || scale <= 0.6;
+    const inMenu = getMenu().find(m => m.slug === slug);
     body.innerHTML = `
-      <header class="top"><a href="#/" class="back" aria-label="All recipes">‹ Recipes</a></header>
+      <header class="top"><a href="#/" class="back" aria-label="All recipes">‹ Recipes</a>${menuLink()}</header>
       <h1>${esc(r.title)}</h1>
       ${r.description ? `<p class="lede">${esc(r.description)}</p>` : ''}
       ${r.source || r.time ? `<p class="muted">${[
@@ -151,6 +153,7 @@ async function renderRecipe(slug) {
         <div class="multipliers">
           ${[0.5, 1, 2, 3].map(m => `<button data-mult="${m}" class="${Math.abs(scale - m) < 1e-6 ? 'on' : ''}">×${m === 0.5 ? '½' : m}</button>`).join('')}
         </div>
+        <button data-act="menu" class="menu-btn ${inMenu ? 'on' : ''}">${inMenu ? (Math.abs(inMenu.servings - servings) > 1e-6 ? 'Update menu' : '✓ On menu') : '+ Add to menu'}</button>
         <div class="seg" role="radiogroup" aria-label="Units">
           ${[['original', 'Original'], ['metric', 'Metric'], ['us', 'US']].map(([k, l]) =>
             `<button role="radio" aria-checked="${units === k}" data-units="${k}" class="${units === k ? 'on' : ''}">${l}</button>`).join('')}
@@ -187,7 +190,12 @@ async function renderRecipe(slug) {
 
   app.onclick = e => {
     const b = e.target.closest('button'); if (!b) return;
-    if (b.dataset.act === 'minus') setServings(Math.max(r.yield / 4, servings - (r.yield >= 8 ? Math.round(r.yield / 4) : 1)));
+    if (b.dataset.act === 'menu') {
+      const m = getMenu().find(x => x.slug === slug);
+      if (m && Math.abs(m.servings - servings) < 1e-6) removeFromMenu(slug); else addToMenu(slug, servings);
+      draw();
+    }
+    else if (b.dataset.act === 'minus') setServings(Math.max(r.yield / 4, servings - (r.yield >= 8 ? Math.round(r.yield / 4) : 1)));
     else if (b.dataset.act === 'plus') setServings(servings + (r.yield >= 8 ? Math.round(r.yield / 4) : 1));
     else if (b.dataset.mult) setServings(r.yield * Number(b.dataset.mult));
     else if (b.dataset.units) { units = b.dataset.units; store.set('units', units); draw(); }
@@ -198,6 +206,160 @@ async function renderRecipe(slug) {
 
   draw();
   renderNotes(slug, notesEl);
+}
+
+// ---------- menu & shopping list ----------
+function menuLink() {
+  const n = getMenu().length;
+  return `<a href="#/menu" class="menu-link">Menu &amp; shopping${n ? ` <span class="badge">${n}</span>` : ''}</a>`;
+}
+
+const shopStore = {
+  get checked() { return new Set(store.get('shop-checked', [])); },
+  set checked(s) { store.set('shop-checked', [...s]); },
+  get extras() { return store.get('shop-extras', []); },
+  set extras(v) { store.set('shop-extras', v); },
+};
+
+async function renderMenu() {
+  document.title = 'Menu & shopping · Recipe Book';
+  app.innerHTML = '<p class="muted">Loading…</p>';
+  const recipes = await loadAll();
+  const bySlug = Object.fromEntries(recipes.map(r => [r.slug, r]));
+  const shopMode = () => (units === 'us' ? 'us' : 'metric');
+
+  const draw = () => {
+    const menu = getMenu().filter(m => bySlug[m.slug]);
+    const expanded = expandMenu(menu, recipes);
+    const list = buildShoppingList(menu, recipes);
+    const checked = shopStore.checked;
+    const extras = shopStore.extras;
+    const mode = shopMode();
+    const left = list.filter(i => !checked.has(i.key)).length + extras.filter(e => !checked.has('x:' + e)).length;
+
+    const recipeCard = m => {
+      const r = bySlug[m.slug];
+            const links = (rr, depth) => rr.ingredients.filter(i => i.link && bySlug[i.link]).map(i => {
+        const k = `${rr.slug}:${i.id}`;
+        const on = !!(m.make || {})[k];
+        const sub = bySlug[i.link];
+        const parent = expanded.find(e => e.recipe.slug === rr.slug);
+        const need = parent ? formatAmount(i, parent.scale, shopMode()) : '';
+        return `<label class="make" style="margin-left:${depth * 22}px"><input type="checkbox" data-make="${esc(m.slug)}|${esc(k)}" ${on ? 'checked' : ''}>
+          <span>Make the <a href="#/r/${encodeURIComponent(sub.slug)}">${esc(sub.title.toLowerCase())}</a> from scratch${need ? ` <span class="muted">(${esc(need)} needed)</span>` : ''}</span></label>
+          ${on ? links(sub, depth + 1) : ''}`;
+      }).join('');
+      const step = r.yield >= 8 ? Math.round(r.yield / 4) : 1;
+      return `<li class="menu-item">
+        <div class="menu-row">
+          <a class="card-title" href="#/r/${encodeURIComponent(r.slug)}">${esc(r.title)}</a>
+          <button class="link" data-remove="${esc(r.slug)}" aria-label="Remove ${esc(r.title)} from menu">Remove</button>
+        </div>
+        <div class="scaler">
+          <span class="label">${r.yieldLabel === 'makes' ? 'Makes' : 'Serves'}</span>
+          <button data-step="${esc(r.slug)}|-${step}" aria-label="Fewer">−</button>
+          <input type="number" inputmode="decimal" min="0.25" step="any" data-servings="${esc(r.slug)}" value="${+m.servings.toFixed(2)}">
+          <button data-step="${esc(r.slug)}|${step}" aria-label="More">+</button>
+          ${r.yieldUnit ? `<span class="label">${esc(r.yieldUnit)}</span>` : ''}
+        </div>
+        ${links(r, 0)}
+      </li>`;
+    };
+
+    const sections = SECTION_ORDER.map(sec => {
+      const items = list.filter(i => i.section === sec);
+      if (!items.length) return '';
+      items.sort((a, b) => (checked.has(a.key) - checked.has(b.key)));
+      return `<h3>${esc(sec)}</h3><ul class="shop">${items.map(it => {
+        const amt = formatItem(it, mode);
+        return `<li class="${checked.has(it.key) ? 'got' : ''}"><label><input type="checkbox" data-check="${esc(it.key)}" ${checked.has(it.key) ? 'checked' : ''}>
+          <span><b>${esc(amt)}</b> ${esc(itemLabel(it))}${it.optional ? ' <span class="muted">(optional)</span>' : ''}
+          <span class="from">${[...it.from].map(esc).join(' · ')}</span></span></label></li>`;
+      }).join('')}</ul>`;
+    }).join('');
+
+    app.innerHTML = `
+      <header class="top"><a href="#/" class="back">‹ Recipes</a></header>
+      <h1>Menu</h1>
+      ${menu.length ? `<ul class="menu-list">${menu.map(recipeCard).join('')}</ul>
+        <p><button class="link" data-clear-menu>Clear menu</button></p>`
+        : `<p class="muted">Your menu is empty. Open a recipe, set the servings, and tap <b>+ Add to menu</b>.</p>`}
+
+      <div class="shop-head">
+        <h2>Shopping list ${left ? `<span class="muted">· ${left} to get</span>` : ''}</h2>
+        <div class="seg" role="radiogroup" aria-label="Units">
+          ${[['metric', 'Metric'], ['us', 'US']].map(([k, l]) => `<button role="radio" aria-checked="${mode === k}" data-units="${k}" class="${mode === k ? 'on' : ''}">${l}</button>`).join('')}
+        </div>
+      </div>
+      ${sections || (menu.length ? '' : '<p class="muted">Add recipes to the menu to build a list.</p>')}
+      <h3>Other things</h3>
+      <ul class="shop">${extras.map(e => `<li class="${checked.has('x:' + e) ? 'got' : ''}"><label><input type="checkbox" data-check="x:${esc(e)}" ${checked.has('x:' + e) ? 'checked' : ''}> <span>${esc(e)}</span></label>
+        <button class="link" data-del-extra="${esc(e)}" aria-label="Remove ${esc(e)}">×</button></li>`).join('')}</ul>
+      <form id="extra-form" class="extra-form"><input id="extra" placeholder="Add an item, e.g. coffee" autocomplete="off"><button type="submit">Add</button></form>
+      <div class="shop-actions">
+        <button data-share>Share / copy list</button>
+        <button class="link" data-uncheck>Untick everything</button>
+      </div>`;
+  };
+
+  const listText = () => {
+    const menu = getMenu();
+    const list = buildShoppingList(menu, recipes);
+    const checked = shopStore.checked;
+    const lines = [];
+    for (const sec of SECTION_ORDER) {
+      const items = list.filter(i => i.section === sec && !checked.has(i.key));
+      if (!items.length) continue;
+      lines.push(sec.toUpperCase());
+      for (const it of items) { const a = formatItem(it, shopMode()); lines.push(`- ${a ? a + ' ' : ''}${itemLabel(it)}`); }
+      lines.push('');
+    }
+    const ex = shopStore.extras.filter(e => !checked.has('x:' + e));
+    if (ex.length) lines.push('OTHER', ...ex.map(e => '- ' + e));
+    return lines.join('\n').trim();
+  };
+
+  const updateMenu = fn => { const menu = getMenu(); fn(menu); saveMenu(menu); draw(); };
+
+  app.addEventListener('click', async e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.remove) updateMenu(m => m.splice(m.findIndex(x => x.slug === b.dataset.remove), 1));
+    else if (b.dataset.step) {
+      const [slug, d] = b.dataset.step.split('|');
+      updateMenu(m => { const it = m.find(x => x.slug === slug); const r = bySlug[slug]; it.servings = Math.max(r.yield / 4, it.servings + Number(d)); });
+    }
+    else if (b.dataset.units) { units = b.dataset.units; store.set('units', units); draw(); }
+    else if (b.dataset.clearMenu != null) { if (confirm('Remove all recipes from the menu?')) { saveMenu([]); shopStore.checked = new Set(); draw(); } }
+    else if (b.dataset.uncheck != null) { shopStore.checked = new Set(); draw(); }
+    else if (b.dataset.delExtra != null) { shopStore.extras = shopStore.extras.filter(x => x !== b.dataset.delExtra); draw(); }
+    else if (b.dataset.share != null) {
+      const text = listText();
+      try {
+        if (navigator.share) await navigator.share({ title: 'Shopping list', text });
+        else { await navigator.clipboard.writeText(text); b.textContent = 'Copied!'; setTimeout(() => (b.textContent = 'Share / copy list'), 1500); }
+      } catch { /* cancelled */ }
+    }
+  });
+  app.addEventListener('change', e => {
+    const t = e.target;
+    if (t.dataset.check != null) {
+      const s = shopStore.checked; t.checked ? s.add(t.dataset.check) : s.delete(t.dataset.check); shopStore.checked = s; draw();
+    } else if (t.dataset.servings) {
+      const v = Number(t.value); if (v > 0) updateMenu(m => { m.find(x => x.slug === t.dataset.servings).servings = v; });
+    } else if (t.dataset.make) {
+      const [slug, k] = t.dataset.make.split('|');
+      updateMenu(m => { const it = m.find(x => x.slug === slug); it.make = it.make || {}; if (t.checked) it.make[k] = true; else delete it.make[k]; });
+    }
+  });
+  app.addEventListener('submit', e => {
+    if (e.target.id !== 'extra-form') return;
+    e.preventDefault();
+    const v = $('#extra', app).value.trim();
+    if (v && !shopStore.extras.includes(v)) shopStore.extras = [...shopStore.extras, v];
+    draw(); $('#extra', app)?.focus();
+  });
+
+  draw();
 }
 
 // ---------- notes ----------
@@ -284,6 +446,7 @@ function route() {
   const fresh = app.cloneNode(false); app.replaceWith(fresh); app = fresh; // drop old listeners
   const m = location.hash.match(/^#\/r\/(.+)$/);
   if (m) renderRecipe(decodeURIComponent(m[1]));
+  else if (location.hash === '#/menu') renderMenu();
   else renderList();
   window.scrollTo(0, 0);
 }

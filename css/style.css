@@ -85,3 +85,28 @@ input[type=search] { width: 100%; margin: 12px 0 8px; }
 .howto { margin: 0; padding-left: 1.3em; font-size: .95rem; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 button.link { border: 0; background: none; padding: 0; min-height: 0; color: var(--accent); text-decoration: underline; font-size: inherit; }
+
+/* menu & shopping */
+.menu-link { text-decoration: none; font-weight: 600; white-space: nowrap; }
+.badge { display: inline-block; min-width: 1.4em; padding: 0 6px; border-radius: 999px; background: var(--accent); color: #fff; font-size: .8em; text-align: center; }
+.menu-btn { white-space: nowrap; }
+.menu-list { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 10px; }
+.menu-item { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; display: grid; gap: 8px; }
+.menu-row { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.menu-item .card-title { text-decoration: none; color: inherit; }
+.make { display: flex; gap: 10px; align-items: baseline; font-size: .95rem; }
+.make input { flex: none; transform: translateY(2px); }
+.make input { accent-color: var(--accent); }
+.shop-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 24px; }
+.shop-head h2 { margin: 0; }
+ul.shop { list-style: none; padding: 0; margin: 0; }
+ul.shop li { display: flex; align-items: baseline; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+ul.shop label { display: flex; gap: 10px; align-items: baseline; flex: 1; cursor: pointer; }
+ul.shop input[type=checkbox] { accent-color: var(--accent); width: 20px; height: 20px; flex: none; transform: translateY(4px); }
+ul.shop li.got span { text-decoration: line-through; color: var(--muted); }
+.from { display: block; font-size: .8rem; color: var(--muted); }
+ul.shop li.got .from { text-decoration: none; }
+.extra-form { display: flex; gap: 8px; margin: 10px 0; }
+.extra-form input { flex: 1; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 12px; }
+.shop-actions { display: flex; gap: 16px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+@media (max-width: 520px) { .top { gap: 8px; } }

@@ -89,7 +89,7 @@ function matchUnit(rest) {
 export function parseIngredientLine(line) {
   let text = line.trim();
   const flags = {};
-  text = text.replace(/\s!(fixed|whole|warn)\b/g, (_, f) => { flags[f] = true; return ''; }).trim();
+  text = text.replace(/\s!(fixed|whole|warn|made)\b/g, (_, f) => { flags[f] = true; return ''; }).trim();
 
   const ing = { raw: line, qty: null, qtyMax: null, unit: null, name: text, flags };
   const m = text.match(QTY_RE);
