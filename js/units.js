@@ -304,11 +304,11 @@ export function convertText(text, mode) {
       if (mode === 'metric' && unit === 'F') return `${roundTo((v - 32) * 5 / 9, 5)} °C`;
       return all;
     })
-    .replace(/(\d+(?:[.,]\d+)?)(\s*-?\s*)(cm|inch|inches|in\.|")(?=[\s,.)x×]|$)/g, (all, n, sep, unit) => {
-      const v = Number(n.replace(',', '.'));
+    .replace(new RegExp(String.raw`(?<![\d/])(${NUM})(\s*-?\s*)(cm|inch|inches|in\.|")(?=[\s,.;)x×]|$)`, 'g'), (all, n, sep, unit) => {
+      const v = parseNumber(n);
       const dash = sep.includes('-') ? '-' : ' ';
       if (mode === 'us' && unit === 'cm') return `${toIn(v)}${dash}inch`;
-      if (mode === 'metric' && unit !== 'cm') return `${Math.round(v * 2.54)}${dash}cm`;
+      if (mode === 'metric' && unit !== 'cm') { const cm = v * 2.54; return `${cm < 5 ? Math.round(cm * 2) / 2 : Math.round(cm)}${dash}cm`; }
       return all;
     });
 }

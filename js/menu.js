@@ -37,7 +37,7 @@ function baseAmounts(ing) {
 }
 
 // ---------- names ----------
-const PREP = /\b(chopped|diced|minced|sliced|fresh|freshly|finely|roughly|crumbled|melted|softened|peeled|cubed|halved|large|medium|small|whole|ripe|boneless|skinless|packed|firmly|warm|cold|room-temperature|plain or|homemade)\b/gi;
+const PREP = /\b(chopped|diced|minced|sliced|fresh|freshly|finely|roughly|crumbled|melted|softened|peeled|cubed|halved|large|medium|small|whole|ripe|boneless|skinless|packed|firmly|warm|cold|room-temperature|plain or|homemade|american-style|tap)\b/gi;
 
 export function itemName(ing) {
   let n = shortName(ing).replace(PREP, ' ').replace(/\s+/g, ' ').trim();
@@ -55,7 +55,7 @@ const SECTIONS = [
   ['Produce', /garlic|onion|shallot|carrot|celery|mushroom|potato|squash|pumpkin|lime|lemon|orange|apple|tomatillo|tomato(?! paste)|jalape|chil|pepper(?!corn)s?\b(?<!salt and pepper)|cilantro|parsley|basil|mint|herb|ginger root|lettuce|spinach|cabbage|leek|zucchini|courgette|avocado|banana|berr/],
   ['Meat & fish', /chicken|pork|beef|lamb|bacon|sausage|turkey|fish|salmon|shrimp|prawn|mince/],
   ['Dairy & eggs', /milk|cream|butter|cheese|cheddar|parmesan|queso|egg|yogurt|yoghurt|crème/],
-  ['Bread & tortillas', /tortilla|bread|bun|pita|wrap|pie dough|pastry/],
+  ['Bread & tortillas', /tortilla|bread|bun|pita|wrap|pie dough|pie crust|pastry/],
   ['Spices & herbs', /\bground\b|salt|pepper|cinnamon|nutmeg|clove|thyme|oregano|bay lea|cumin|paprika|chili powder|vanilla/],
   ['Baking', /flour|sugar|baking|yeast|cocoa|chocolate|syrup|honey|cornstarch/],
   ['Pantry', /.*/],
@@ -75,6 +75,11 @@ function batchesFor(ing, scale, sub) {
     const yieldBase = sub.yield * UNITS[unit].f;
     if (UNITS[unit].kind === 'volume' && b.volume) return (b.volume * scale) / yieldBase;
     if (UNITS[unit].kind === 'mass' && b.mass) return (b.mass * scale) / yieldBase;
+  }
+  // Counted yields: "makes: 2 pie crusts" and an ingredient "1 pie crust".
+  if (!ing.unit && ing.qty != null && sub.yieldUnit) {
+    const noun = singular(sub.yieldUnit.toLowerCase());
+    if (singular(ing.name.toLowerCase()).includes(noun)) return (ing.qty * scale) / sub.yield;
   }
   return Math.max(1, Math.ceil(scale)); // fall back to whole batches
 }
@@ -106,6 +111,7 @@ export function buildShoppingList(menu, recipes) {
     for (const ing of recipe.ingredients) {
       if (ing.link && make[`${recipe.slug}:${ing.id}`]) continue; // made from scratch: its ingredients are listed instead
       if (ing.flags.made) continue; // made in an earlier step of the recipe
+      if (/^(cold |warm |hot |ice[- ]?|tap )*water\b/i.test(shortName(ing))) continue; // tap water isn't shopping
       const s = ing.flags.fixed ? 1 : scale;
       const name = ing.qty == null ? ing.name.replace(/\s*\(optional\)/i, '') : itemName(ing);
       const key = keyFor(name);

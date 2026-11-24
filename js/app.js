@@ -176,7 +176,7 @@ async function renderRecipe(slug) {
         <section class="steps">
           <h2>Method</h2>
           <ol>${r.steps.map(s => `<li><p>${renderStep(s, r, scale)}</p></li>`).join('')}</ol>
-          ${r.notes ? `<h3>Recipe notes</h3><p>${esc(r.notes)}</p>` : ''}
+          ${r.notes ? `<h3>Recipe notes</h3><p>${esc(convertText(r.notes, units))}</p>` : ''}
         </section>
       </div>`;
   };
