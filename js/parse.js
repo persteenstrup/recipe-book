@@ -58,8 +58,10 @@ export function parseRecipe(text, slug = '') {
 
   if (typeof recipe.tags === 'string') recipe.tags = [recipe.tags];
   // Yield: "serves" or "makes"
-  if (recipe.serves != null) { recipe.yield = Number(recipe.serves) || 1; recipe.yieldLabel = 'serves'; }
-  else if (recipe.makes != null) { recipe.yield = Number(recipe.makes) || 1; recipe.yieldLabel = 'makes'; }
+  // "makes: 2 cups" -> yield 2, unit "cups"
+  const y = v => { const m = String(v).match(/^\s*(\d+(?:\.\d+)?)\s*(.*)$/); return m ? [Number(m[1]), m[2]] : [1, String(v)]; };
+  if (recipe.serves != null) { [recipe.yield, recipe.yieldUnit] = y(recipe.serves); recipe.yieldLabel = 'serves'; }
+  else if (recipe.makes != null) { [recipe.yield, recipe.yieldUnit] = y(recipe.makes); recipe.yieldLabel = 'makes'; }
   else { recipe.yield = 1; recipe.yieldLabel = 'batch'; }
 
   recipe.equipment = recipe.equipment.map(e => {
@@ -73,7 +75,7 @@ function parseList(block) {
   const items = [];
   for (const l of block) {
     const t = l.trim();
-    if (t.startsWith('- ')) items.push(t.slice(2).trim());
+    if (t.startsWith('- ')) items.push(t.slice(2).trim().replace(/^"(.*)"$/, '$1'));
     else if (items.length) items[items.length - 1] += ' ' + t; // continuation line
   }
   return items;

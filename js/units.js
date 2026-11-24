@@ -44,7 +44,7 @@ const DENSITIES = [
   ['raisins', .63, true], ['walnuts', .5, true], ['pecans', .45, true], ['almonds', .6, true], ['nuts', .55, true],
   ['butter', .96, true], ['baking powder', .81, true], ['baking soda', .96, true], ['bicarbonate', .96, true],
   ['salt', 1.2, true], ['yeast', .6, true], ['honey', 1.42, true], ['maple syrup', 1.32, true], ['syrup', 1.37, true],
-  ['peanut butter', 1.08, true], ['yogurt', 1.03, false], ['yoghurt', 1.03, false],
+  ['peanut butter', 1.08, true], ['condensed milk', 1.14, false], ['evaporated milk', 1.07, false], ['yogurt', 1.03, false], ['yoghurt', 1.03, false],
   ['cream', 1.0, false], ['milk', 1.03, false], ['water', 1.0, false], ['stock', 1.0, false], ['broth', 1.0, false],
   ['oil', .92, false], ['wine', .99, false], ['vinegar', 1.01, false], ['juice', 1.04, false],
 ].sort((a, b) => b[0].length - a[0].length);
@@ -100,12 +100,19 @@ export function parseIngredientLine(line) {
   const u = matchUnit(rest);
   ing.unit = u.unit;
   ing.name = u.rest.replace(/^of\s+/, '');
-  // Alternate amount in brackets right after the unit, e.g. "1/2 cup (8 g) cilantro" or "1/4 cup (60 ml) oil".
-  const alt = ing.unit && ing.name.match(new RegExp(String.raw`^\(\s*(${NUM})\s*([a-zA-Z. ]+?)\s*\)\s*`));
+  // Link to another recipe in the book: "19 oz sweetened condensed milk @sweetened-condensed-milk"
+  ing.name = ing.name.replace(/\s@([\w-]+)\b/, (_, slug) => { ing.link = slug; return ''; }).trim();
+  // Alternate amounts in brackets right after the unit: "1/2 cup (8 g) cilantro", "32 oz (4 cups; 910 g) milk".
+  const alt = ing.unit && ing.name.match(/^\(([^()]*)\)\s*/);
   if (alt) {
-    const au = matchUnit(alt[2]);
-    if (au.unit && !au.rest && UNITS[au.unit].sys !== UNITS[ing.unit].sys) {
-      ing.alt = { qty: parseNumber(alt[1]), unit: au.unit };
+    const alts = alt[1].split(';').map(part => {
+      const m = part.trim().replace(/^about\s+/i, '').match(QTY_RE);
+      if (!m || m[2]) return null;
+      const au = matchUnit(part.trim().replace(/^about\s+/i, '').slice(m[0].length));
+      return au.unit && !au.rest ? { qty: parseNumber(m[1]), unit: au.unit } : null;
+    });
+    if (alts.length && alts.every(Boolean)) {
+      ing.alts = alts;
       ing.name = ing.name.slice(alt[0].length);
     }
   }
@@ -136,7 +143,7 @@ function fmtMetricMass(g) {
   if (g >= 1000) return { n: trimNum(roundTo(g, 50) / 1000), u: 'kg' };
   if (g < 10) return { n: trimNum(roundTo(g, 0.5), 1), u: 'g' };
   if (g < 50) return { n: String(Math.round(g)), u: 'g' };
-  if (g < 250) return { n: String(roundTo(g, 5)), u: 'g' };
+  if (g < 1000) return { n: String(roundTo(g, 5)), u: 'g' };
   return { n: String(roundTo(g, 10)), u: 'g' };
 }
 
@@ -167,9 +174,9 @@ function fmtUsVolume(ml) {
   return { n, u: /^(1|[¼⅓½⅔¾])$/.test(n) ? 'cup' : 'cups' };
 }
 
-function fmtUsMass(g) {
+function fmtUsMass(g, keepOz = false) {
   const oz = g / UNITS.oz.f;
-  if (oz < 16) return { n: oz < 4 ? fraction(oz, [0, 1 / 4, 1 / 2, 3 / 4, 1]) : String(Math.round(oz)), u: 'oz' };
+  if (oz < 16 || keepOz) return { n: oz < 4 ? fraction(oz, [0, 1 / 4, 1 / 2, 3 / 4, 1]) : String(Math.round(oz)), u: 'oz' };
   const lb = Math.floor(oz / 16);
   const rem = Math.round(oz - lb * 16);
   if (rem === 0 || rem === 16) return { n: String(rem === 16 ? lb + 1 : lb), u: 'lb' };
@@ -184,13 +191,17 @@ function fmtCount(x, whole) {
 // Convert an amount for display. mode: 'original' | 'metric' | 'us'
 export function convert(ing, qty, mode) {
   const u = ing.unit ? UNITS[ing.unit] : null;
-  // Prefer the author's own alternate amount (e.g. "1/2 cup (8 g)") when it's in the target system.
-  if (u && ing.alt && mode !== 'original' && !(u.sys === 'spoon' && qty * u.f <= 45)) {
-    const a = UNITS[ing.alt.unit];
-    if (a.sys === mode) {
-      const scaled = ing.alt.qty * qty / ing.qty;
-      const g = scaled * a.f;
-      return a.kind === 'mass' ? (mode === 'us' ? fmtUsMass(g) : fmtMetricMass(g)) : (mode === 'us' ? fmtUsVolume(g) : fmtMetricVolume(g));
+  // Prefer the author's own alternate amounts (e.g. "1/2 cup (8 g)") over estimates from densities.
+  if (u && ing.alts && mode !== 'original' && !(u.sys === 'spoon' && mode === 'metric' && qty * u.f <= 45)) {
+    const all = [{ qty: ing.qty, unit: ing.unit }, ...ing.alts];
+    const pick = mode === 'metric'
+      ? all.find(a => UNITS[a.unit].sys === 'metric')
+      : all.find(a => UNITS[a.unit].sys !== 'metric' && UNITS[a.unit].kind === 'volume') || all.find(a => UNITS[a.unit].sys === 'us');
+    if (pick && pick !== all[0]) {
+      const a = UNITS[pick.unit];
+      const base = pick.qty * (qty / ing.qty) * a.f;
+      if (a.kind === 'mass') return mode === 'us' ? fmtUsMass(base) : fmtMetricMass(base);
+      return mode === 'us' ? fmtUsVolume(base) : (base <= 45 ? fmtSpoon(base) : fmtMetricVolume(base));
     }
   }
   if (!u) return { n: fmtCount(qty, ing.flags.whole), u: '' };
@@ -204,7 +215,7 @@ export function convert(ing, qty, mode) {
     if (target === 'us' && dens && mode === 'us') {
       return fmtUsVolume(base / dens.d);
     }
-    if (target === 'us') return fmtUsMass(base);
+    if (target === 'us') return fmtUsMass(base, mode === 'original' && ing.unit === 'oz');
     return fmtMetricMass(base);
   }
 

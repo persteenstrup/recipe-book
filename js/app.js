@@ -53,7 +53,7 @@ async function renderList() {
     $('#cards').innerHTML = list.map(r => `
       <li><a class="card" href="#/r/${encodeURIComponent(r.slug)}">
         <span class="card-title">${esc(r.title)}</span>
-        <span class="muted">${r.yieldLabel === 'makes' ? 'Makes' : 'Serves'} ${r.yield}${r.tags.length ? ' · ' + r.tags.map(esc).join(', ') : ''}</span>
+        <span class="muted">${r.yieldLabel === 'makes' ? 'Makes' : 'Serves'} ${r.yield}${r.yieldUnit ? ' ' + esc(r.yieldUnit) : ''}${r.tags.length ? ' · ' + r.tags.map(esc).join(', ') : ''}</span>
       </a></li>`).join('') || '<li class="muted">No recipes match.</li>';
     for (const b of app.querySelectorAll('.chip')) b.classList.toggle('on', b.dataset.tag === tag);
   };
@@ -67,6 +67,9 @@ async function renderList() {
 
 // ---------- recipe view ----------
 const PORTIONS = { half: 1 / 2, third: 1 / 3, quarter: 1 / 4, twothirds: 2 / 3, threequarters: 3 / 4 };
+
+// Ingredients that are recipes in the book link to them.
+const linked = (ing, html) => ing.link ? `<a href="#/r/${encodeURIComponent(ing.link)}">${html}</a>` : html;
 
 // Units that may appear as loose amounts inside step text.
 const TEXT_UNIT = String.raw`(?:cups?|tablespoons?|tbsps?|teaspoons?|tsps?|grams?|g|kilograms?|kg|millilitres?|milliliters?|ml|litres?|liters?|l|ounces?|oz|pounds?|lbs?|lb|quarts?|pints?|fl\.? oz)`;
@@ -100,7 +103,7 @@ function renderStep(text, r, scale) {
     if (!ing) return all;
     const f = part && PORTIONS[part] ? PORTIONS[part] : 1;
     const amt = formatAmount(ing, scale * f, units);
-    const name = esc(nameFor(ing, amt));
+    const name = linked(ing, esc(nameFor(ing, amt)));
     return hold(amt ? `<span class="inline-amt"><b>${esc(amt)}</b> ${name}</span>` : `<span class="inline-amt">${name}</span>`);
   });
   t = t.replace(LOOSE_RE, all => {
@@ -143,6 +146,7 @@ async function renderRecipe(slug) {
           <button data-act="minus" aria-label="Fewer">−</button>
           <input id="servings" type="number" inputmode="decimal" min="0.25" step="any" value="${+servings.toFixed(2)}">
           <button data-act="plus" aria-label="More">+</button>
+          ${r.yieldUnit ? `<span class="label">${esc(r.yieldUnit)}</span>` : ''}
         </div>
         <div class="multipliers">
           ${[0.5, 1, 2, 3].map(m => `<button data-mult="${m}" class="${Math.abs(scale - m) < 1e-6 ? 'on' : ''}">×${m === 0.5 ? '½' : m}</button>`).join('')}
@@ -162,7 +166,7 @@ async function renderRecipe(slug) {
             ${g.name ? `<h3>${esc(g.name)}</h3>` : ''}
             <ul>${g.ids.map(id => byId[id]).map(i => {
               const amt = formatAmount(i, scale, units);
-              return `<li><label><input type="checkbox"> <span><b>${esc(amt)}</b> ${esc(convertText(nameFor(i, amt, true), units))}${i.flags.fixed && scale !== 1 ? ' <span class="muted">(not scaled)</span>' : ''}</span></label></li>`;
+              return `<li><label><input type="checkbox"> <span><b>${esc(amt)}</b> ${linked(i, esc(convertText(nameFor(i, amt, true), units)))}${i.flags.fixed && scale !== 1 ? ' <span class="muted">(not scaled)</span>' : ''}</span></label></li>`;
             }).join('')}</ul>`).join('')}
           ${r.equipment.length ? `<h3>Equipment</h3><ul class="plain">${r.equipment.map(e => `<li>${esc(convertText(e.text, units))}</li>`).join('')}</ul>` : ''}
         </section>

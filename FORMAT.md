@@ -33,6 +33,11 @@ steps:
 
 If the original gives both measures, put the second one in brackets right after the unit,
 e.g. `1/2 cup (8 g) chopped cilantro`. Switching to metric then uses the author's own figure.
+Several alternates are fine, separated by semicolons: `32 oz (4 cups; 910 g) milk`.
+To link an ingredient to another recipe in the book, add `@` and its file name:
+`19 oz (2 cups; 540 g) sweetened condensed milk @sweetened-condensed-milk`.
+`makes:` can carry a unit, e.g. `makes: 2 cups`.
+
 Write counted things the way they read naturally (`1 onion`, `2 bay leaves`); the site fixes
 singular and plural when amounts change.
 
