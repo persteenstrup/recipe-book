@@ -1,0 +1,17 @@
+title: Roasted tomato soup
+serves: 4
+tags: [soup, vegetarian]
+ingredients:
+  tomatoes: 1 kg ripe tomatoes, halved
+  onion: 1 onion, quartered
+  garlic: 4 cloves garlic
+  oil: 3 tbsp olive oil
+  stock: 750 ml vegetable stock
+  cream: 100 ml double cream
+  salt: 1 tsp salt
+  bay: 1 bay leaf !fixed
+steps:
+  - Heat the oven to 200 °C. Toss {tomatoes}, {onion} and {garlic} with {oil} and {salt} on a tray.
+  - Roast for 40 minutes until soft and charred at the edges.
+  - Tip into a pot with {stock} and {bay}; simmer 10 minutes.
+  - Remove the bay leaf, blend until smooth and stir in {cream}.
