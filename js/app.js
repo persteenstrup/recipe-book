@@ -1,4 +1,5 @@
 import { parseRecipe, parseIndex } from './parse.js';
+import { auth, loadNotes, addNote, deleteNote, checkToken, TOKEN_URL } from './notes.js';
 import { formatAmount, nameFor, convertText, parseIngredientLine, NUM } from './units.js';
 
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -119,11 +120,15 @@ async function renderRecipe(slug) {
 
   let servings = store.get('servings:' + slug, r.yield);
 
+  app.innerHTML = '<div id="rbody"></div><section id="my-notes" class="my-notes" aria-label="Notes"></section>';
+  const body = $('#rbody', app);
+  const notesEl = $('#my-notes', app);
+
   const draw = () => {
     const scale = servings / r.yield;
     const byId = Object.fromEntries(r.ingredients.map(i => [i.id, i]));
     const bigChange = scale >= 1.75 || scale <= 0.6;
-    app.innerHTML = `
+    body.innerHTML = `
       <header class="top"><a href="#/" class="back" aria-label="All recipes">‹ Recipes</a></header>
       <h1>${esc(r.title)}</h1>
       ${r.description ? `<p class="lede">${esc(r.description)}</p>` : ''}
@@ -164,7 +169,7 @@ async function renderRecipe(slug) {
         <section class="steps">
           <h2>Method</h2>
           <ol>${r.steps.map(s => `<li><p>${renderStep(s, r, scale)}</p></li>`).join('')}</ol>
-          ${r.notes ? `<h3>Notes</h3><p>${esc(r.notes)}</p>` : ''}
+          ${r.notes ? `<h3>Recipe notes</h3><p>${esc(r.notes)}</p>` : ''}
         </section>
       </div>`;
   };
@@ -187,6 +192,86 @@ async function renderRecipe(slug) {
   // Tap a step to mark it done.
   app.addEventListener('click', e => { const li = e.target.closest('.steps li'); if (li) li.classList.toggle('done'); });
 
+  draw();
+  renderNotes(slug, notesEl);
+}
+
+// ---------- notes ----------
+const fmtDate = d => { try { return new Date(d + 'T12:00:00').toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); } catch { return d; } };
+
+async function renderNotes(slug, el) {
+  let notes = [];
+  let status = 'Loading notes…';
+  let signingIn = false;
+
+  const draw = () => {
+    el.innerHTML = `
+      <h2>Our notes</h2>
+      ${status ? `<p class="muted">${esc(status)}</p>` : ''}
+      <ul class="note-list">${notes.map(n => `
+        <li>
+          <p>${esc(n.text).replace(/\n/g, '<br>')}</p>
+          <div class="note-meta muted">${esc(fmtDate(n.date))}${n.author ? ' · ' + esc(n.author) : ''}
+            ${auth.signedIn ? `<button class="link" data-del="${esc(n.id)}">Delete</button>` : ''}</div>
+        </li>`).join('')}</ul>
+      ${!status && !notes.length ? '<p class="muted">No notes yet.</p>' : ''}
+      ${auth.signedIn ? `
+        <form id="note-form" class="note-form">
+          <textarea id="note-text" rows="3" placeholder="How did it go? What would you change next time?" required></textarea>
+          <div class="row"><button type="submit" class="primary">Save note</button>
+          <span class="muted">Saving as ${esc(auth.name || 'you')} · <button type="button" class="link" data-signout>Sign out</button></span></div>
+        </form>` : signingIn ? `
+        <form id="signin-form" class="note-form">
+          <p>Notes are saved in your GitHub recipe book, so they show on every device. To save from this device, paste a GitHub key once:</p>
+          <ol class="howto">
+            <li>Open <a href="${TOKEN_URL}" target="_blank" rel="noopener">GitHub's new key page</a>.</li>
+            <li>Name it "Recipe book", and set expiration to a year (or "No expiration").</li>
+            <li>Under Repository access choose <b>Only select repositories</b> → <b>recipe-book</b>.</li>
+            <li>Under Permissions → Repository permissions set <b>Contents</b> to <b>Read and write</b>.</li>
+            <li>Click Generate, copy the key and paste it below.</li>
+          </ol>
+          <label>Your name <input id="si-name" value="${esc(auth.name)}" placeholder="Shown on your notes" required></label>
+          <label>GitHub key <input id="si-token" type="password" autocomplete="off" placeholder="github_pat_…" required></label>
+          <div class="row"><button type="submit" class="primary">Save key</button> <button type="button" class="link" data-cancel>Cancel</button></div>
+        </form>` : `<button data-signin>Add a note</button>`}`;
+  };
+
+  el.addEventListener('click', async e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.signin != null) { signingIn = true; draw(); $('#si-name', el)?.focus(); }
+    else if (b.dataset.cancel != null) { signingIn = false; draw(); }
+    else if (b.dataset.signout != null) { auth.signOut(); draw(); }
+    else if (b.dataset.del && confirm('Delete this note?')) {
+      status = 'Deleting…'; draw();
+      try { notes = await deleteNote(slug, b.dataset.del); status = ''; } catch (err) { status = err.message; }
+      draw();
+    }
+  });
+
+  el.addEventListener('submit', async e => {
+    e.preventDefault();
+    if (e.target.id === 'signin-form') {
+      const token = $('#si-token', el).value, name = $('#si-name', el).value;
+      status = 'Checking key…'; draw(); $('#si-name', el).value = name; $('#si-token', el).value = token;
+      const ok = await checkToken(token).catch(() => false);
+      if (!ok) {
+        status = 'That key didn\'t work. Check that it has Contents: Read and write on recipe-book.';
+        draw(); $('#si-name', el).value = name; $('#si-token', el).value = token; return;
+      }
+      auth.save(token, name); signingIn = false; status = '';
+      draw();
+    } else if (e.target.id === 'note-form') {
+      const text = $('#note-text', el).value;
+      if (!text.trim()) return;
+      const btn = e.target.querySelector('button[type=submit]');
+      btn.disabled = true; btn.textContent = 'Saving…';
+      try { notes = await addNote(slug, text); status = ''; draw(); }
+      catch (err) { status = err.message; btn.disabled = false; btn.textContent = 'Save note'; draw(); $('#note-text', el).value = text; }
+    }
+  });
+
+  draw();
+  try { notes = await loadNotes(slug); status = ''; } catch (err) { status = err.message; }
   draw();
 }
 
