@@ -40,7 +40,7 @@ const DENSITIES = [
   ['brown sugar', .93, true], ['powdered sugar', .51, true], ['icing sugar', .51, true], ['confectioners', .51, true],
   ['caster sugar', .85, true], ['sugar', .85, true], ['cocoa', .36, true], ['chocolate chips', .72, true],
   ['rolled oats', .38, true], ['oats', .38, true], ['rice', .78, true], ['quinoa', .72, true], ['lentils', .82, true],
-  ['breadcrumbs', .45, true], ['panko', .25, true], ['parmesan', .42, true], ['grated cheese', .47, true], ['shredded', .47, true],
+  ['breadcrumbs', .45, true], ['frozen peas', .6, true], ['peas', .6, true], ['panko', .25, true], ['parmesan', .42, true], ['grated cheese', .47, true], ['shredded', .47, true],
   ['raisins', .63, true], ['walnuts', .5, true], ['pecans', .45, true], ['almonds', .6, true], ['nuts', .55, true],
   ['butter', .96, true], ['baking powder', .81, true], ['baking soda', .96, true], ['bicarbonate', .96, true],
   ['salt', 1.2, true], ['yeast', .6, true], ['honey', 1.42, true], ['maple syrup', 1.32, true], ['syrup', 1.37, true],
