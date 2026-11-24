@@ -9,6 +9,9 @@ title: Pancakes
 serves: 4                 # base yield; can also be e.g. "makes: 12"
 tags: [breakfast, quick]
 source: Grandma           # optional
+url: https://example.com  # optional link to the original
+time: 30 mins             # optional
+description: One or two sentences shown under the title.
 notes: Optional free text.
 
 ingredients:
@@ -27,6 +30,11 @@ steps:
   - Beat in {eggs}; rest the batter 20 minutes.
   - Fry in {butter}, using {butter:half} per batch.   # {id:half} / {id:third} / {id:quarter} = portion of the amount
 ```
+
+If the original gives both measures, put the second one in brackets right after the unit,
+e.g. `1/2 cup (8 g) chopped cilantro`. Switching to metric then uses the author's own figure.
+Write counted things the way they read naturally (`1 onion`, `2 bay leaves`); the site fixes
+singular and plural when amounts change.
 
 Ingredient groups (e.g. "For the sauce") use a nested map:
 

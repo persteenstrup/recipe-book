@@ -1,5 +1,5 @@
 import { parseRecipe, parseIndex } from './parse.js';
-import { formatAmount, shortName, convertText } from './units.js';
+import { formatAmount, nameFor, convertText } from './units.js';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 let app = $('#app');
@@ -75,7 +75,7 @@ function renderStep(text, r, scale) {
     if (!ing) return all;
     const f = part && PORTIONS[part] ? PORTIONS[part] : 1;
     const amt = formatAmount(ing, scale * f, units);
-    const name = esc(shortName(ing));
+    const name = esc(nameFor(ing, amt));
     return amt ? `<span class="inline-amt"><b>${esc(amt)}</b> ${name}</span>` : `<span class="inline-amt">${name}</span>`;
   });
 }
@@ -96,7 +96,11 @@ async function renderRecipe(slug) {
     app.innerHTML = `
       <header class="top"><a href="#/" class="back" aria-label="All recipes">‹ Recipes</a></header>
       <h1>${esc(r.title)}</h1>
-      ${r.source ? `<p class="muted">From ${esc(r.source)}</p>` : ''}
+      ${r.description ? `<p class="lede">${esc(r.description)}</p>` : ''}
+      ${r.source || r.time ? `<p class="muted">${[
+        r.source ? 'From ' + (r.url && /^https?:\/\//.test(r.url) ? `<a href="${esc(r.url)}" rel="noopener">${esc(r.source)}</a>` : esc(r.source)) : '',
+        r.time ? esc(r.time) : '',
+      ].filter(Boolean).join(' · ')}</p>` : ''}
 
       <section class="controls" aria-label="Scale and units">
         <div class="scaler">
@@ -123,7 +127,7 @@ async function renderRecipe(slug) {
             ${g.name ? `<h3>${esc(g.name)}</h3>` : ''}
             <ul>${g.ids.map(id => byId[id]).map(i => {
               const amt = formatAmount(i, scale, units);
-              return `<li><label><input type="checkbox"> <span><b>${esc(amt)}</b> ${esc(convertText(i.name, units))}${i.flags.fixed && scale !== 1 ? ' <span class="muted">(not scaled)</span>' : ''}</span></label></li>`;
+              return `<li><label><input type="checkbox"> <span><b>${esc(amt)}</b> ${esc(convertText(nameFor(i, amt, true), units))}${i.flags.fixed && scale !== 1 ? ' <span class="muted">(not scaled)</span>' : ''}</span></label></li>`;
             }).join('')}</ul>`).join('')}
           ${r.equipment.length ? `<h3>Equipment</h3><ul class="plain">${r.equipment.map(e => `<li>${esc(convertText(e.text, units))}</li>`).join('')}</ul>` : ''}
         </section>

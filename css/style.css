@@ -70,3 +70,4 @@ input[type=search] { width: 100%; margin: 12px 0 8px; }
   .controls { position: static; border: 0; padding: 0; }
   body { background: #fff; color: #000; }
 }
+.lede { margin: .2em 0 .4em; }

@@ -79,7 +79,7 @@ function matchUnit(rest) {
     let cand = words.slice(0, n).join(' ').replace(/\.$/, '');
     const key = UNITS[cand] ? cand : ALIASES[cand] || ALIASES[cand.toLowerCase()] || (UNITS[cand.toLowerCase()] ? cand.toLowerCase() : null);
     // Single-letter aliases (t, T, c) are only units when followed by more text.
-    if (key && !(cand.length === 1 && words.length === n)) {
+    if (key && !(['t', 'T', 'c'].includes(cand) && words.length === n)) {
       return { unit: key, rest: words.slice(n).join(' ') };
     }
   }
@@ -100,6 +100,15 @@ export function parseIngredientLine(line) {
   const u = matchUnit(rest);
   ing.unit = u.unit;
   ing.name = u.rest.replace(/^of\s+/, '');
+  // Alternate amount in brackets right after the unit, e.g. "1/2 cup (8 g) cilantro" or "1/4 cup (60 ml) oil".
+  const alt = ing.unit && ing.name.match(new RegExp(String.raw`^\(\s*(${NUM})\s*([a-zA-Z. ]+?)\s*\)\s*`));
+  if (alt) {
+    const au = matchUnit(alt[2]);
+    if (au.unit && !au.rest && UNITS[au.unit].sys !== UNITS[ing.unit].sys) {
+      ing.alt = { qty: parseNumber(alt[1]), unit: au.unit };
+      ing.name = ing.name.slice(alt[0].length);
+    }
+  }
   if (/\begg(s)?\b/i.test(ing.name) && !ing.unit) flags.whole = true;
   return ing;
 }
@@ -175,6 +184,15 @@ function fmtCount(x, whole) {
 // Convert an amount for display. mode: 'original' | 'metric' | 'us'
 export function convert(ing, qty, mode) {
   const u = ing.unit ? UNITS[ing.unit] : null;
+  // Prefer the author's own alternate amount (e.g. "1/2 cup (8 g)") when it's in the target system.
+  if (u && ing.alt && mode !== 'original' && !(u.sys === 'spoon' && qty * u.f <= 45)) {
+    const a = UNITS[ing.alt.unit];
+    if (a.sys === mode) {
+      const scaled = ing.alt.qty * qty / ing.qty;
+      const g = scaled * a.f;
+      return a.kind === 'mass' ? (mode === 'us' ? fmtUsMass(g) : fmtMetricMass(g)) : (mode === 'us' ? fmtUsVolume(g) : fmtMetricVolume(g));
+    }
+  }
   if (!u) return { n: fmtCount(qty, ing.flags.whole), u: '' };
 
   const base = qty * u.f; // grams or ml
@@ -215,23 +233,71 @@ export function formatAmount(ing, scale, mode) {
 
 // Ingredient name without trailing prep notes (", softened").
 export function shortName(ing) {
-  return ing.name.split(',')[0].trim();
+  return ing.name.replace(/\s*\([^)]*\)/g, '').split(',')[0].trim();
+}
+
+// "medium onions" -> "medium onion" when the amount is one or less.
+export function singular(name) {
+  return name.replace(/\b([A-Za-zñé]{3,})\b/g, w => {
+    const l = w.toLowerCase();
+    if (l === 'leaves') return w.slice(0, -3) + 'f';
+    if (/(ss|us|is|ous)$/.test(l) || !l.endsWith('s')) return w;
+    if (/toes$/.test(l)) return w.slice(0, -2);
+    if (/ies$/.test(l)) return w.slice(0, -3) + 'y';
+    if (/(ches|shes)$/.test(l)) return w.slice(0, -2);
+    return w.slice(0, -1);
+  });
+}
+
+// Display name for an amount: singular for counts of one or less.
+export function plural(name) {
+  return name.replace(/([A-Za-zñé]+)$/, w => {
+    const l = w.toLowerCase();
+    if (l === 'leaf') return w.slice(0, -1) + 'ves';
+    if (/(tomato|potato)$/.test(l)) return w + 'es';
+    if (/[^aeiou]y$/.test(l)) return w.slice(0, -1) + 'ies';
+    if (/(s|x|ch|sh)$/.test(l)) return w + 'es';
+    return w + 's';
+  });
+}
+
+export function nameFor(ing, amountText, full = false) {
+  const short = shortName(ing);
+  if (ing.unit || !amountText) return full ? ing.name : short;
+  const v = parseNumber(amountText.split(/[–-]/).pop());
+  let head = short;
+  if (v > 0 && v <= 1) head = singular(short);
+  else if (v > 1 && ing.qty <= 1) head = plural(short);
+  if (!full) return head;
+  return ing.name.startsWith(short) ? head + ing.name.slice(short.length) : ing.name;
 }
 
 // Temperatures and lengths inside free text.
 export function convertText(text, mode) {
   if (mode === 'original') return text;
+  const toIn = v => fraction(v / 2.54, [0, 1 / 2, 1]);
   return text
+    // "275°F (135°C)": keep only the one for this mode
+    .replace(/(\d+)\s*°\s*([CF])\s*\(\s*(\d+)\s*°\s*([CF])\s*\)/g, (all, a, ua, b, ub) =>
+      (mode === 'us' ? (ua === 'F' ? a : b) : (ua === 'C' ? a : b)) + ` °${mode === 'us' ? 'F' : 'C'}`)
+    // "9- by 13-inch", "9 x 13 inch", "20 x 30 cm"
+    .replace(/(\d+(?:[.,]\d+)?)\s*-?\s*(?:by|x|×)\s*(\d+(?:[.,]\d+)?)\s*-?\s*(cm|inch(?:es)?|in\b|")/g, (all, a, b, unit) => {
+      const [x, y] = [a, b].map(v => Number(v.replace(',', '.')));
+      if (mode === 'us' && unit === 'cm') return `${toIn(x)} by ${toIn(y)} inch`;
+      if (mode === 'metric' && unit !== 'cm') return `${Math.round(x * 2.54)} by ${Math.round(y * 2.54)} cm`;
+      return all;
+    })
     .replace(/(\d+(?:[.,]\d+)?)\s*°\s*([CF])\b/g, (all, n, unit) => {
       const v = Number(n.replace(',', '.'));
       if (mode === 'us' && unit === 'C') return `${roundTo(v * 9 / 5 + 32, 5)} °F`;
       if (mode === 'metric' && unit === 'F') return `${roundTo((v - 32) * 5 / 9, 5)} °C`;
       return all;
     })
-    .replace(/(\d+(?:[.,]\d+)?)\s*(cm|inch|inches|in\.|")(?=[\s,.)x×]|$)/g, (all, n, unit) => {
+    .replace(/(\d+(?:[.,]\d+)?)(\s*-?\s*)(cm|inch|inches|in\.|")(?=[\s,.)x×]|$)/g, (all, n, sep, unit) => {
       const v = Number(n.replace(',', '.'));
-      if (mode === 'us' && unit === 'cm') return `${fraction(v / 2.54, [0, 1 / 2, 1])} inch`;
-      if (mode === 'metric' && unit !== 'cm') return `${Math.round(v * 2.54)} cm`;
+      const dash = sep.includes('-') ? '-' : ' ';
+      if (mode === 'us' && unit === 'cm') return `${toIn(v)}${dash}inch`;
+      if (mode === 'metric' && unit !== 'cm') return `${Math.round(v * 2.54)}${dash}cm`;
       return all;
     });
 }
