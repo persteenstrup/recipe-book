@@ -1,5 +1,5 @@
 import { parseRecipe, parseIndex } from './parse.js';
-import { formatAmount, nameFor, convertText } from './units.js';
+import { formatAmount, nameFor, convertText, parseIngredientLine, NUM } from './units.js';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 let app = $('#app');
@@ -67,17 +67,47 @@ async function renderList() {
 // ---------- recipe view ----------
 const PORTIONS = { half: 1 / 2, third: 1 / 3, quarter: 1 / 4, twothirds: 2 / 3, threequarters: 3 / 4 };
 
+// Units that may appear as loose amounts inside step text.
+const TEXT_UNIT = String.raw`(?:cups?|tablespoons?|tbsps?|teaspoons?|tsps?|grams?|g|kilograms?|kg|millilitres?|milliliters?|ml|litres?|liters?|l|ounces?|oz|pounds?|lbs?|lb|quarts?|pints?|fl\.? oz)`;
+const LOOSE_RE = new RegExp(String.raw`(?<![\w/-])(${NUM}(?:\s*(?:-|–|to)\s*${NUM})?)\s+(${TEXT_UNIT})(?![\w-])`, 'g');
+
+function amountSpan(line, scale, fixed) {
+  const ing = parseIngredientLine(line);
+  if (ing.qty == null || !ing.unit) return null;
+  const amt = formatAmount(ing, fixed ? 1 : scale, units);
+  const note = fixed && Math.abs(scale - 1) > 1e-6 ? ' <span class="not-scaled">not scaled</span>' : '';
+  return `<b class="${fixed ? 'fixed-amt' : 'inline-amt'}">${esc(amt)}</b>${note}`;
+}
+
+// Step text markup:
+//   {id} / {id:half}      ingredient amount + name, scaled
+//   [[1/2 cup]]           a loose amount that scales with the recipe
+//   [[2 to 3 tbsp !fixed]] converted but never scaled (e.g. "per taco")
+// Any other amount with a cooking unit is converted and flagged "not scaled".
 function renderStep(text, r, scale) {
   const byId = Object.fromEntries(r.ingredients.map(i => [i.id, i]));
-  let html = esc(convertText(text, units));
-  return html.replace(/\{([\w-]+)(?::([\w]+))?\}/g, (all, id, part) => {
+  const parts = [];
+  const hold = html => String.fromCharCode(0xE000 + parts.push(html) - 1); // private-use char as placeholder
+
+  let t = text.replace(/\[\[(.+?)\]\]/g, (all, inner) => {
+    const fixed = /\s!fixed\b/.test(inner);
+    const span = amountSpan(inner.replace(/\s!fixed\b/, ''), scale, fixed);
+    return span ? hold(span) : inner;
+  });
+  t = t.replace(/\{([\w-]+)(?::([\w]+))?\}/g, (all, id, part) => {
     const ing = byId[id];
     if (!ing) return all;
     const f = part && PORTIONS[part] ? PORTIONS[part] : 1;
     const amt = formatAmount(ing, scale * f, units);
     const name = esc(nameFor(ing, amt));
-    return amt ? `<span class="inline-amt"><b>${esc(amt)}</b> ${name}</span>` : `<span class="inline-amt">${name}</span>`;
+    return hold(amt ? `<span class="inline-amt"><b>${esc(amt)}</b> ${name}</span>` : `<span class="inline-amt">${name}</span>`);
   });
+  t = t.replace(LOOSE_RE, all => {
+    const span = amountSpan(all, scale, true);
+    return span ? hold(span) : all;
+  });
+  t = esc(convertText(t, units));
+  return t.replace(/[\uE000-\uF8FF]/g, c => parts[c.charCodeAt(0) - 0xE000]);
 }
 
 async function renderRecipe(slug) {

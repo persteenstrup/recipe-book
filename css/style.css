@@ -71,3 +71,5 @@ input[type=search] { width: 100%; margin: 12px 0 8px; }
   body { background: #fff; color: #000; }
 }
 .lede { margin: .2em 0 .4em; }
+.fixed-amt { font-weight: 600; }
+.not-scaled { font-size: .75em; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; white-space: nowrap; vertical-align: 1px; }

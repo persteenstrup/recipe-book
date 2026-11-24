@@ -36,6 +36,11 @@ e.g. `1/2 cup (8 g) chopped cilantro`. Switching to metric then uses the author'
 Write counted things the way they read naturally (`1 onion`, `2 bay leaves`); the site fixes
 singular and plural when amounts change.
 
+Other amounts in the steps that aren't ingredients (e.g. "you'll have about 1/2 cup liquid") go in
+double brackets so they scale and convert too: `about [[1/2 cup]] cooking liquid`.
+Add `!fixed` for amounts that should convert but never scale, e.g. `[[2 to 3 tbsp !fixed]] per taco`.
+Any amount left unmarked is still converted, and shows a small "not scaled" note when the recipe is scaled.
+
 Ingredient groups (e.g. "For the sauce") use a nested map:
 
 ```yaml

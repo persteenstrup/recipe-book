@@ -56,7 +56,7 @@ export function densityFor(name) {
 }
 
 // "2 1/4", "3/4", "1.5", "1,5", "½", "1½", "1-2"
-const NUM = String.raw`(?:\d+\s+\d+\/\d+|\d+\/\d+|\d*[½⅓⅔¼¾⅛⅜⅝⅞⅕]|\d+(?:[.,]\d+)?)`;
+export const NUM = String.raw`(?:\d+\s+\d+\/\d+|\d+\/\d+|\d*[½⅓⅔¼¾⅛⅜⅝⅞⅕]|\d+(?:[.,]\d+)?)`;
 const QTY_RE = new RegExp(String.raw`^(${NUM})(?:\s*(?:-|–|to)\s*(${NUM}))?\s*`);
 
 export function parseNumber(s) {

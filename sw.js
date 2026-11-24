@@ -1,5 +1,5 @@
 // Network first (so new recipes show up), falling back to the cache when offline.
-const CACHE = 'recipe-book-v2';
+const CACHE = 'recipe-book-v3';
 const SHELL = ['./', 'index.html', 'css/style.css', 'js/app.js', 'js/parse.js', 'js/units.js', 'manifest.webmanifest', 'icon.svg', 'recipes/index.yaml'];
 
 self.addEventListener('install', e => {
