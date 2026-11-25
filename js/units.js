@@ -165,6 +165,9 @@ function fmtSpoon(ml) {
 function fmtUsVolume(ml) {
   if (ml < UNITS.cup.f / 4 - 1) return fmtSpoon(ml);
   const cups = ml / UNITS.cup.f;
+  const q = [0, 1 / 4, 1 / 2, 3 / 4, 1];
+  if (cups >= 15.5) { const n = fraction(ml / UNITS.gallon.f, q); return { n, u: n === '1' ? 'gallon' : 'gallons' }; }
+  if (cups >= 7.5) { const n = fraction(ml / UNITS.quart.f, q); return { n, u: n === '1' ? 'quart' : 'quarts' }; }
   const allowed = [0, 1 / 4, 1 / 3, 1 / 2, 2 / 3, 3 / 4, 1];
   if (cups < 1) {
     const nearest = allowed.reduce((b, a) => Math.abs(cups - a) < Math.abs(cups - b) ? a : b);
@@ -284,6 +287,8 @@ export function nameFor(ing, amountText, full = false) {
 }
 
 // Temperatures and lengths inside free text.
+const cmNum = c => (c < 5 ? Math.round(c * 2) / 2 : Math.round(c));
+
 export function convertText(text, mode) {
   if (mode === 'original') return text;
   const toIn = v => fraction(v / 2.54, [0, 1 / 2, 1]);
@@ -304,11 +309,21 @@ export function convertText(text, mode) {
       if (mode === 'metric' && unit === 'F') return `${roundTo((v - 32) * 5 / 9, 5)} °C`;
       return all;
     })
+    // Ranges: "1/4 to 1/2 inch", "1/4- to 1/2-inch"
+    .replace(new RegExp(String.raw`(?<![\d/])(${NUM})\s*-?\s*(?:to|–)\s*(${NUM})\s*-?\s*(cm|inch(?:es)?)(?=[\s,.;)]|$)`, 'g'), (all, a, b, unit) => {
+      const [x, y] = [a, b].map(parseNumber);
+      if (mode === 'us' && unit === 'cm') return `${toIn(x)} to ${toIn(y)} inch`;
+      if (mode === 'metric' && unit !== 'cm') {
+        if (y * 2.54 < 1) return `${Math.round(x * 25.4)} to ${Math.round(y * 25.4)} mm`;
+        return `${cmNum(x * 2.54)} to ${cmNum(y * 2.54)} cm`;
+      }
+      return all;
+    })
     .replace(new RegExp(String.raw`(?<![\d/])(${NUM})(\s*-?\s*)(cm|inch|inches|in\.|")(?=[\s,.;)x×]|$)`, 'g'), (all, n, sep, unit) => {
       const v = parseNumber(n);
       const dash = sep.includes('-') ? '-' : ' ';
       if (mode === 'us' && unit === 'cm') return `${toIn(v)}${dash}inch`;
-      if (mode === 'metric' && unit !== 'cm') { const cm = v * 2.54; return `${cm < 5 ? Math.round(cm * 2) / 2 : Math.round(cm)}${dash}cm`; }
+      if (mode === 'metric' && unit !== 'cm') return v * 2.54 < 1 ? `${Math.round(v * 25.4)}${dash}mm` : `${cmNum(v * 2.54)}${dash}cm`;
       return all;
     });
 }
